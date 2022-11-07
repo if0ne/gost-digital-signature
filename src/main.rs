@@ -1,128 +1,56 @@
+use crate::curve::Curve;
+use crate::signature::Signature;
 use bitvec::prelude::*;
-use num_bigint_dig::{BigInt, ModInverse, RandBigInt, Sign};
-use num_traits::identities::Zero;
-use num_traits::Pow;
+use num_bigint_dig::BigInt;
+use std::str::FromStr;
 
 use crate::table::{A, C, PI, TAU};
 
+mod curve;
+mod point;
+mod signature;
 mod table;
 
 const BLOCK_SIZE: usize = 64;
 
 type Block = [u8; BLOCK_SIZE];
 
-fn main() {}
-
-fn sign(
-    p: &BigInt,
-    a: &BigInt,
-    q: &BigInt,
-    point: &(BigInt, BigInt),
-    key: &BigInt,
-    hash: Block,
-) -> (BigInt, BigInt, BigInt) {
-    let hash = BigInt::from_bytes_le(Sign::Plus, &hash);
-    let mut e = hash % q;
-    if e.is_zero() {
-        e = BigInt::from(1i8);
-    }
-
-    let (r, s) = loop {
-        let k = rand_k(q);
-        let c = mul_scalar(&k, point, p, a);
-        let r = c.0 % &k;
-        if r.is_zero() {
-            continue;
-        }
-        let s = (&r * key + k * &e) % q;
-        if s.is_zero() {
-            continue;
-        }
-        break (r, s);
-    };
-
-    let sign = [r.to_bytes_le().1, s.to_bytes_le().1].concat();
-    let sign = BigInt::from_bytes_le(Sign::Plus, &sign);
-
-    (sign, r, s)
-}
-
-fn verify(
-    _sign: &BigInt,
-    r: &BigInt,
-    s: &BigInt,
-    q: &BigInt,
-    p: &BigInt,
-    point: &(BigInt, BigInt),
-    check_point: &(BigInt, BigInt),
-    a: &BigInt,
-    hash: Block,
-) -> bool {
-    if !(*r > BigInt::zero() && (r < q) && *s > BigInt::zero() && s < q) {
-        return false;
-    }
-
-    let hash = BigInt::from_bytes_le(Sign::Plus, &hash);
-    let mut e = hash % (q);
-    if e.is_zero() {
-        e = BigInt::from(1i8);
-    }
-
-    let v = e.mod_inverse(p).unwrap();
-    let z1 = (s * &v) % q;
-    let z2 = -r * &v % q;
-    let c = add_point(
-        &mul_scalar(&z1, point, p, a),
-        &mul_scalar(&z2, check_point, p, a),
-        p,
-        a,
+/*fn main() {
+    let message = "Юра - балерина".bytes().collect::<Vec<u8>>();
+    let key = BigInt::from_str(
+        "610081804136373098219538153239847583006845519069531562982388135354890606301782255383608393423372379057665527595116827307025046458837440766121180466875860",
+    )
+    .unwrap();
+    let curve = Curve::new(
+        BigInt::from_str("7").unwrap(),
+        BigInt::from_str(
+            "1518655069210828534508950034714043154928747527740206436194018823352809982443793732829756914785974674866041605397883677596626326413990136959047435811826396",
+        )
+        .unwrap(),
+        BigInt::from_str(
+            "3623986102229003635907788753683874306021320925534678605086546150450856166624002482588482022271496854025090823603058735163734263822371964987228582907372403",
+        )
+        .unwrap(),
+        BigInt::from_str(
+            "3623986102229003635907788753683874306021320925534678605086546150450856166623969164898305032863068499961404079437936585455865192212970734808812618120619743",
+        )
+        .unwrap(),
+        BigInt::from_str(
+            "3623986102229003635907788753683874306021320925534678605086546150450856166623969164898305032863068499961404079437936585455865192212970734808812618120619743",
+        )
+        .unwrap(),
     );
+    let sign = Signature::sign(&message, key, curve.clone());
+    println!("{}", sign.verify(&message, curve));
+}*/
 
-    let big_r = c.0 % q;
-
-    big_r == *r
-}
-
-fn rand_k(upper: &BigInt) -> BigInt {
-    rand::thread_rng().gen_bigint_range(&BigInt::from(0i8), upper)
-}
-
-fn add_point(
-    l: &(BigInt, BigInt),
-    r: &(BigInt, BigInt),
-    p: &BigInt,
-    a: &BigInt,
-) -> (BigInt, BigInt) {
-    if (l.0 == r.0) && (l.1 == r.1) && (!l.1.is_zero()) {
-        let t1: BigInt = BigInt::from(3i8) * l.0.pow(2u8) + a;
-        let lambda = (t1 * (BigInt::from(2i8) * &l.1)).mod_inverse(p).unwrap();
-        let x = (lambda.pow(2u8) - (BigInt::from(2i8) * &l.0)) % p;
-        let y = (lambda * (&l.0 - &x) - &l.1) % p;
-
-        (x, y)
-    } else {
-        let lambda = ((&r.1 - &l.1) * (&r.0 - &l.0)).mod_inverse(p).unwrap();
-        let x = (lambda.pow(2u8) - &l.0 - &r.0) % p;
-        let y = (lambda * (&l.0 - &x) - &l.1) % p;
-
-        (x, y)
-    }
-}
-
-fn mul_scalar(k: &BigInt, point: &(BigInt, BigInt), p: &BigInt, a: &BigInt) -> (BigInt, BigInt) {
-    let mut output = (BigInt::zero(), BigInt::zero());
-    let mut scaler = (point.0.clone(), point.1.clone());
-    let k_bytes = k.to_bytes_le().1;
-    let bits = k_bytes.view_bits::<Lsb0>();
-
-    for bit in bits {
-        if *bit {
-            output = add_point(&output, &scaler, p, a);
-        }
-        scaler = add_point(&scaler, &scaler, p, a);
-    }
-
-    output
+fn main() {
+    let bytes = include_bytes!("text.txt");
+    let time = std::time::Instant::now();
+    let hash = hash_512(bytes);
+    let elapsed = time.elapsed();
+    println!("Hash: {:x?}", hash);
+    println!("Time: {} ms", elapsed.as_millis());
 }
 
 fn hash_512(message: &[u8]) -> Block {
@@ -302,16 +230,16 @@ impl ByteParse for &str {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use crate::{hash_512, sign, verify, ByteParse};
     use num_bigint_dig::BigInt;
-    use crate::{ByteParse, hash_512, sign, verify};
+    use std::str::FromStr;
 
     const MSG: [u8; 63] = [
         0x32u8, 0x31, 0x30, 0x39, 0x38, 0x37, 0x36, 0x35, 0x34, 0x33, 0x32, 0x31, 0x30, 0x39, 0x38,
         0x37, 0x36, 0x35, 0x34, 0x33, 0x32, 0x31, 0x30, 0x39, 0x38, 0x37, 0x36, 0x35, 0x34, 0x33,
         0x32, 0x31, 0x30, 0x39, 0x38, 0x37, 0x36, 0x35, 0x34, 0x33, 0x32, 0x31, 0x30, 0x39, 0x38,
         0x37, 0x36, 0x35, 0x34, 0x33, 0x32, 0x31, 0x30, 0x39, 0x38, 0x37, 0x36, 0x35, 0x34, 0x33,
-            0x32, 0x31, 0x30,
+        0x32, 0x31, 0x30,
     ];
 
     #[test]
@@ -326,11 +254,11 @@ mod tests {
         let hash_actual = hash_512(&MSG);
 
         let hash_expected = [
-            0x48u8, 0x6F, 0x64, 0xC1, 0x91, 0x78, 0x79, 0x41, 0x7F, 0xEF, 0x08, 0x2B, 0x33, 0x81, 0xA4,
-            0xE2, 0x11, 0xC3, 0x24, 0xF0, 0x74, 0x65, 0x4C, 0x38, 0x82, 0x3A, 0x7B, 0x76, 0xF8, 0x30,
-            0xAD, 0x00, 0xFA, 0x1F, 0xBA, 0xE4, 0x2B, 0x12, 0x85, 0xC0, 0x35, 0x2F, 0x22, 0x75, 0x24,
-            0xBC, 0x9A, 0xB1, 0x62, 0x54, 0x28, 0x8D, 0xD6, 0x86, 0x3D, 0xCC, 0xD5, 0xB9, 0xF5, 0x4A,
-            0x1A, 0xD0, 0x54, 0x1B,
+            0x48u8, 0x6F, 0x64, 0xC1, 0x91, 0x78, 0x79, 0x41, 0x7F, 0xEF, 0x08, 0x2B, 0x33, 0x81,
+            0xA4, 0xE2, 0x11, 0xC3, 0x24, 0xF0, 0x74, 0x65, 0x4C, 0x38, 0x82, 0x3A, 0x7B, 0x76,
+            0xF8, 0x30, 0xAD, 0x00, 0xFA, 0x1F, 0xBA, 0xE4, 0x2B, 0x12, 0x85, 0xC0, 0x35, 0x2F,
+            0x22, 0x75, 0x24, 0xBC, 0x9A, 0xB1, 0x62, 0x54, 0x28, 0x8D, 0xD6, 0x86, 0x3D, 0xCC,
+            0xD5, 0xB9, 0xF5, 0x4A, 0x1A, 0xD0, 0x54, 0x1B,
         ];
 
         assert_eq!(hash_actual, hash_expected);
@@ -340,22 +268,46 @@ mod tests {
     fn signer() {
         let hash = hash_512(&MSG);
 
-        let p = BigInt::from_str("57896044618658097711785492504343953926634992332820282019728792003956564821041").unwrap();
+        let p = BigInt::from_str(
+            "57896044618658097711785492504343953926634992332820282019728792003956564821041",
+        )
+        .unwrap();
         let a = BigInt::from_str("7").unwrap();
-        let b = BigInt::from_str("43308876546767276905765904595650931995942111794451039583252968842033849580414").unwrap();
-        let m = BigInt::from_str("57896044618658097711785492504343953927082934583725450622380973592137631069619").unwrap();
-        let q = BigInt::from_str("57896044618658097711785492504343953927082934583725450622380973592137631069619").unwrap();
+        let b = BigInt::from_str(
+            "43308876546767276905765904595650931995942111794451039583252968842033849580414",
+        )
+        .unwrap();
+        let m = BigInt::from_str(
+            "57896044618658097711785492504343953927082934583725450622380973592137631069619",
+        )
+        .unwrap();
+        let q = BigInt::from_str(
+            "57896044618658097711785492504343953927082934583725450622380973592137631069619",
+        )
+        .unwrap();
 
         let point = (
             BigInt::from_str("2").unwrap(),
-            BigInt::from_str("4018974056539037503335449422937059775635739389905545080690979365213431566280").unwrap()
+            BigInt::from_str(
+                "4018974056539037503335449422937059775635739389905545080690979365213431566280",
+            )
+            .unwrap(),
         );
 
-        let d = BigInt::from_str("55441196065363246126355624130324183196576709222340016572108097750006097525544").unwrap();
+        let d = BigInt::from_str(
+            "55441196065363246126355624130324183196576709222340016572108097750006097525544",
+        )
+        .unwrap();
 
         let check_point = (
-            BigInt::from_str("57520216126176808443631405023338071176630104906313632182896741342206604859403").unwrap(),
-            BigInt::from_str("17614944419213781543809391949654080031942662045363639260709847859438286763994").unwrap()
+            BigInt::from_str(
+                "57520216126176808443631405023338071176630104906313632182896741342206604859403",
+            )
+            .unwrap(),
+            BigInt::from_str(
+                "17614944419213781543809391949654080031942662045363639260709847859438286763994",
+            )
+            .unwrap(),
         );
 
         let (sign, r, s) = sign(&p, &a, &q, &point, &d, hash);
