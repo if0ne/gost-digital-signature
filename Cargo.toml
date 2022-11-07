@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 bitvec = "1.0.1"
+rand = "0.8"
+num-traits = "0.2.15"
+num-bigint-dig = { version = "0.8.1", features = ["rand"] }
