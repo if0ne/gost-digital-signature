@@ -20,10 +20,11 @@ impl Point {
     }
 
     pub fn double(&self, p: &BigInt, a: &BigInt) -> Self {
-        let temp: BigInt = (3 * self.x.pow(2u8) + a) * (2 * &self.y);
-        let lambda = temp.mod_inverse(p).unwrap();
-        let x = (lambda.pow(2u8) - (2 * &self.x)) % p;
-        let y = (lambda * (&self.x - &x) - &self.y) % p;
+        let dy = make_positive((BigInt::from(2) * &self.y).mod_inverse(p).unwrap(), p);
+        let dx = make_positive(BigInt::from(3) * self.x.pow(2u8) + a, p);
+        let lamda = (dx * dy) % p;
+        let x = make_positive((lamda.pow(2u8) - (BigInt::from(2) * &self.x)) % p, p);
+        let y = make_positive((lamda * (&self.x - &x) - &self.y) % p, p);
 
         Point { x, y }
     }
@@ -38,11 +39,16 @@ impl Point {
         } else if other.x == BigInt::zero() && other.y == BigInt::zero() {
             self
         } else {
-            let lambda = ((&other.y - &self.y) * (&other.x - &self.x))
-                .mod_inverse(p)
-                .unwrap();
-            let x = (lambda.pow(2u8) - &self.x - &other.x) % p;
-            let y = (lambda * (&self.x - &x) - &self.y) % p;
+            let dx = make_positive(&other.y - &self.y, p);
+            let dy = make_positive(&other.x - &self.x, p);
+
+            if dy == BigInt::zero() {
+                return Point::new(BigInt::zero(), BigInt::zero());
+            }
+
+            let lambda = make_positive(dx * dy.mod_inverse(p).unwrap() % p, p);
+            let x = make_positive((lambda.pow(2u8) - &self.x - &other.x) % p, p);
+            let y = make_positive((lambda * (&self.x - &x) - &self.y) % p, p);
 
             Point { x, y }
         }
@@ -62,5 +68,13 @@ impl Point {
         }
 
         output
+    }
+}
+
+pub(crate) fn make_positive(q: BigInt, p: &BigInt) -> BigInt {
+    if q < BigInt::zero() {
+        q + p
+    } else {
+        q
     }
 }
